@@ -51,6 +51,15 @@ RPI_GLES_SwapWindow(_THIS, SDL_Window * window) {
         return 0;
     }
 
+    if (wdata->copy_fb != NULL) {
+        SDL_VideoDisplay *display;
+        SDL_DisplayData *displaydata;
+        display = SDL_GetDisplayForWindow(window);
+        displaydata = (SDL_DisplayData *) display->driverdata;
+        vc_dispmanx_snapshot(displaydata->dispman_display, wdata->copy_screen, 0);
+        vc_dispmanx_resource_read_data(wdata->copy_screen, &wdata->copy_rect, wdata->copy_fb, wdata->copy_size);
+    }
+    
     /* Wait immediately for vsync (as if we only had two buffers), for low input-lag scenarios.
      * Run your SDL2 program with "SDL_RPI_DOUBLE_BUFFER=1 <program_name>" to enable this. */
     if (wdata->double_buffer) {

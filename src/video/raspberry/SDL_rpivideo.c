@@ -50,6 +50,11 @@
 #include "SDL_rpiopengles.h"
 #include "SDL_rpimouse.h"
 
+#include <fcntl.h>
+#include <linux/fb.h>
+#include <sys/mman.h>
+#include <sys/ioctl.h>
+
 static int
 RPI_Available(void)
 {
@@ -236,6 +241,7 @@ RPI_CreateWindow(_THIS, SDL_Window * window)
     DISPMANX_UPDATE_HANDLE_T dispman_update;
     uint32_t layer = SDL_RPI_VIDEOLAYER;
     const char *env;
+    char *fbname;
 
     /* Disable alpha, otherwise the app looks composed with whatever dispman is showing (X11, console,etc) */
     dispman_alpha.flags = DISPMANX_FLAGS_ALPHA_FIXED_ALL_PIXELS; 
@@ -315,6 +321,45 @@ RPI_CreateWindow(_THIS, SDL_Window * window)
     SDL_SetMouseFocus(window);
     SDL_SetKeyboardFocus(window);
 
+    /* copy screen to other framebuffer */
+    fbname = getenv("SDL_RPI_SND_FRAMEBUFFER");
+    if (fbname != NULL) {
+        struct fb_var_screeninfo vinfo;
+        struct fb_fix_screeninfo finfo;
+        uint32_t image_prt;
+        int fb = open(fbname, O_RDWR);
+        if (fb == -1) {
+            fprintf(stderr, "no such framebuffer: %s\n", fbname);
+            return -1;
+        }
+        if (ioctl(fb, FBIOGET_FSCREENINFO, &finfo)) {
+            fprintf(stderr, "not a framebuffer: %s\n", fbname);
+            close(fb);
+            return -1;
+        }
+        if (ioctl(fb, FBIOGET_VSCREENINFO, &vinfo)) {
+            fprintf(stderr, "not a framebuffer: %s\n", fbname);
+            close(fb);
+            return -1;
+        }
+        wdata->copy_fb = (char *) mmap(0, finfo.smem_len, PROT_READ | PROT_WRITE, MAP_SHARED, fb, 0);
+        if (wdata->copy_fb == NULL) {
+            fprintf(stderr, "cannot mmap framebuffer: %s\n", fbname);
+            close(fb);
+            return -1;
+        }
+        close(fb);
+        wdata->copy_screen = vc_dispmanx_resource_create(VC_IMAGE_RGB565, vinfo.xres, vinfo.yres, &image_prt);
+        if (!wdata->copy_screen) {
+            fprintf(stderr, "cannot process framebuffer: %s\n", fbname);
+            return -1;
+        }
+        vc_dispmanx_rect_set(&wdata->copy_rect, 0, 0, vinfo.xres, vinfo.yres);
+        wdata->copy_size = vinfo.xres * vinfo.bits_per_pixel / 8;
+    } else {
+        wdata->copy_fb = NULL;
+    }
+    
     /* Window has been successfully created */
     return 0;
 }

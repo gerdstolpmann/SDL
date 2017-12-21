@@ -49,6 +49,12 @@ typedef struct SDL_WindowData
     EGLSurface egl_surface;
 #endif    
 
+    /* copy framebuffer */
+    DISPMANX_RESOURCE_HANDLE_T copy_screen;
+    char *copy_fb;
+    VC_RECT_T copy_rect;
+    long copy_size;
+    
     /* Vsync callback cond and mutex */
     SDL_cond  *vsync_cond;
     SDL_mutex *vsync_cond_mutex;
