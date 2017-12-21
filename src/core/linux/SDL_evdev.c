@@ -263,6 +263,18 @@ SDL_EVDEV_Poll(void)
                         break;
                     }
 
+                    if (events[i].code == BTN_TOUCH) {
+                        if (!item->is_touchscreen) /* FIXME: temp hack */
+                            break;
+                        if (events[i].value > 0) {
+                            item->touchscreen_data->slots[item->touchscreen_data->current_slot].tracking_id = events[i].value;
+                            item->touchscreen_data->slots[item->touchscreen_data->current_slot].delta = EVDEV_TOUCH_SLOTDELTA_DOWN;
+                        } else {
+                            item->touchscreen_data->slots[item->touchscreen_data->current_slot].delta = EVDEV_TOUCH_SLOTDELTA_UP;
+                        }
+                        break;
+                    }
+
                     /* Probably keyboard */
                     scan_code = SDL_EVDEV_translate_keycode(events[i].code);
                     if (scan_code != SDL_SCANCODE_UNKNOWN) {
@@ -276,22 +288,12 @@ SDL_EVDEV_Poll(void)
                     break;
                 case EV_ABS:
                     switch(events[i].code) {
-                    case ABS_MT_SLOT:
-                        if (!item->is_touchscreen) /* FIXME: temp hack */
-                            break;
-                        item->touchscreen_data->current_slot = events[i].value;
-                        break;
-                    case ABS_MT_TRACKING_ID:
-                        if (!item->is_touchscreen) /* FIXME: temp hack */
-                            break;
-                        if (events[i].value >= 0) {
-                            item->touchscreen_data->slots[item->touchscreen_data->current_slot].tracking_id = events[i].value;
-                            item->touchscreen_data->slots[item->touchscreen_data->current_slot].delta = EVDEV_TOUCH_SLOTDELTA_DOWN;
-                        } else {
-                            item->touchscreen_data->slots[item->touchscreen_data->current_slot].delta = EVDEV_TOUCH_SLOTDELTA_UP;
-                        }
-                        break;
-                    case ABS_MT_POSITION_X:
+                    /* case ABS_MT_SLOT: */
+                    /*     if (!item->is_touchscreen) /\* FIXME: temp hack *\/ */
+                    /*         break; */
+                    /*     item->touchscreen_data->current_slot = events[i].value; */
+                    /*     break; */
+                    case ABS_X:
                         if (!item->is_touchscreen) /* FIXME: temp hack */
                             break;
                         item->touchscreen_data->slots[item->touchscreen_data->current_slot].x = events[i].value;
@@ -299,7 +301,7 @@ SDL_EVDEV_Poll(void)
                             item->touchscreen_data->slots[item->touchscreen_data->current_slot].delta = EVDEV_TOUCH_SLOTDELTA_MOVE;
                         }
                         break;
-                    case ABS_MT_POSITION_Y:
+                    case ABS_Y:
                         if (!item->is_touchscreen) /* FIXME: temp hack */
                             break;
                         item->touchscreen_data->slots[item->touchscreen_data->current_slot].y = events[i].value;
@@ -307,16 +309,16 @@ SDL_EVDEV_Poll(void)
                             item->touchscreen_data->slots[item->touchscreen_data->current_slot].delta = EVDEV_TOUCH_SLOTDELTA_MOVE;
                         }
                         break;
-                    case ABS_X:
-                        if (item->is_touchscreen) /* FIXME: temp hack */
-                            break;
-                        SDL_SendMouseMotion(mouse->focus, mouse->mouseID, SDL_FALSE, events[i].value, mouse->y);
-                        break;
-                    case ABS_Y:
-                        if (item->is_touchscreen) /* FIXME: temp hack */
-                            break;
-                        SDL_SendMouseMotion(mouse->focus, mouse->mouseID, SDL_FALSE, mouse->x, events[i].value);
-                        break;
+                    /* case ABS_X: */
+                    /*     if (item->is_touchscreen) /\* FIXME: temp hack *\/ */
+                    /*         break; */
+                    /*     SDL_SendMouseMotion(mouse->focus, mouse->mouseID, SDL_FALSE, events[i].value, mouse->y); */
+                    /*     break; */
+                    /* case ABS_Y: */
+                    /*     if (item->is_touchscreen) /\* FIXME: temp hack *\/ */
+                    /*         break; */
+                    /*     SDL_SendMouseMotion(mouse->focus, mouse->mouseID, SDL_FALSE, mouse->x, events[i].value); */
+                    /*     break; */
                     default:
                         break;
                     }
@@ -350,7 +352,7 @@ SDL_EVDEV_Poll(void)
                                 (float)item->touchscreen_data->range_x;
                             norm_y = (float)(item->touchscreen_data->slots[j].y - item->touchscreen_data->min_y) /
                                 (float)item->touchscreen_data->range_y;
-
+                            
                             switch(item->touchscreen_data->slots[j].delta) {
                             case EVDEV_TOUCH_SLOTDELTA_DOWN:
                                 SDL_SendTouch(item->fd, item->touchscreen_data->slots[j].tracking_id, SDL_TRUE, norm_x, norm_y, 1.0f);
@@ -432,7 +434,7 @@ SDL_EVDEV_init_touchscreen(SDL_evdevlist_item* item)
         return SDL_OutOfMemory();
     }
 
-    ret = ioctl(item->fd, EVIOCGABS(ABS_MT_POSITION_X), &abs_info);
+    ret = ioctl(item->fd, EVIOCGABS(ABS_X), &abs_info);
     if (ret < 0) {
         SDL_free(item->touchscreen_data->name);
         SDL_free(item->touchscreen_data);
@@ -442,7 +444,7 @@ SDL_EVDEV_init_touchscreen(SDL_evdevlist_item* item)
     item->touchscreen_data->max_x = abs_info.maximum;
     item->touchscreen_data->range_x = abs_info.maximum - abs_info.minimum;
 
-    ret = ioctl(item->fd, EVIOCGABS(ABS_MT_POSITION_Y), &abs_info);
+    ret = ioctl(item->fd, EVIOCGABS(ABS_Y), &abs_info);
     if (ret < 0) {
         SDL_free(item->touchscreen_data->name);
         SDL_free(item->touchscreen_data);
@@ -454,9 +456,7 @@ SDL_EVDEV_init_touchscreen(SDL_evdevlist_item* item)
 
     ret = ioctl(item->fd, EVIOCGABS(ABS_MT_SLOT), &abs_info);
     if (ret < 0) {
-        SDL_free(item->touchscreen_data->name);
-        SDL_free(item->touchscreen_data);
-        return SDL_SetError("Failed to get evdev touchscreen limits");
+        item->touchscreen_data->max_slots = 1;  /* not multitouch */
     }
     item->touchscreen_data->max_slots = abs_info.maximum + 1;
 
